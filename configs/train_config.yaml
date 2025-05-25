@@ -1,0 +1,98 @@
+# configs/train_config.yaml
+
+project_name: "cbct_segmentation_baseline"
+
+# 1. Data Settings
+data:
+  image_dir: "E:/DATASET/A-MICCAI-Challenge-Task1/image/image"  # <--- 修改为你的图像路径
+  label_dir: "E:/DATASET/A-MICCAI-Challenge-Task1/label/label"  # <--- 修改为你的标签路径
+  num_classes: 13                         # 背景(0), 牙齿(1), 根管(2)
+  val_split: 0.2                         # 验证集比例
+  random_seed: 42                        # 数据划分随机种子
+  cache_rate: 0                          # 缓存数据的比例 (1.0=全部缓存到内存, 0=不缓存)
+                                         # 对于大数据集, 考虑 PersistentDataset 或减小 cache_rate
+  num_workers: 2                         # DataLoader 工作进程数
+
+# 2. Preprocessing & Augmentation Settings (MONAI Transforms)
+transforms:
+  # 通用预处理
+  orientation: "RAS"                     # 标准化方向
+  spacing: [0.5, 0.5, 0.5]               # 重采样到指定体素间距 (mm) - 根据你的数据调整!
+  intensity_norm:
+    a_min: -1000.0                       # Intensity windowing min (根据数据调整)
+    a_max: 1000.0                        # Intensity windowing max (根据数据调整)
+    b_min: 0.0                           # Target range min
+    b_max: 1.0                           # Target range max
+    clip: True
+  crop_foreground: True                  # 是否基于标签裁剪前景区域
+  # 训练时数据增强
+  spatial_crop_size: [96, 96, 96]        # 训练时随机裁剪的 patch 大小 (根据 GPU 显存调整)
+  rand_crop_pos_ratio: 0.8               # RandCropByPosNegLabeld 正样本比例
+  rand_flip_prob: 0.5                    # 随机翻转概率 (左右)
+  rand_rotate90_prob: 0.5                # 随机90度旋转概率
+  rand_scale_intensity_prob: 0.1         # 随机缩放强度概率
+  rand_shift_intensity_prob: 0.1         # 随机偏移强度概率
+
+# 3. Model Settings
+# model:
+#   name: "UNet"                           # 模型名称 (MONAI 内置)
+#   spatial_dims: 3                        # 3D 数据
+#   in_channels: 1                         # 输入通道数 (CBCT 通常为 1)
+#   out_channels: 13                        # 输出通道数 (背景+牙齿+根管)
+#   channels: [16, 32, 64, 128, 256]       # UNet 各层通道数
+#   strides: [2, 2, 2, 2]                  # UNet 下采样步长
+#   num_res_units: 2                       # 每个 UNet block 中的残差单元数
+#   norm: "BATCH"                          # Normalization layer (BATCH, INSTANCE)
+#   dropout: 0.1                           # Dropout rate
+
+model:
+  name: "SegResNet"
+  spatial_dims: 3
+  in_channels: 1
+  out_channels: 13
+  init_filters: 16
+  blocks_down: [1, 2, 2, 4]
+  blocks_up: [1, 1, 1]
+  dropout_prob: 0.1
+
+# 4. Training Settings
+training:
+  device: "cuda:0"                       # 训练设备 ("cuda:0", "cpu")
+  batch_size: 2                          # 批大小 (根据 GPU 显存调整)
+  num_epochs: 800                        # 训练轮数
+  optimizer: "AdamW"                     # 优化器 (Adam, AdamW, SGD)
+  learning_rate: 0.0001                  # 学习率
+  weight_decay: 0.00001                  # 权重衰减 (AdamW)
+  lr_scheduler: "CosineAnnealingLR"      # 学习率调度器 (None, CosineAnnealingLR, ReduceLROnPlateau)
+  scheduler_params:                      # 调度器参数 (根据选择的调度器)
+    T_max: 800                           # For CosineAnnealingLR (通常等于 num_epochs)
+    # eta_min: 0.000001                  # Optional: for CosineAnnealingLR
+    # factor: 0.5                        # For ReduceLROnPlateau
+    # patience: 10                       # For ReduceLROnPlateau
+
+  loss_function: "DiceCELoss"            # 损失函数 (DiceLoss, DiceCELoss, FocalLoss)
+  loss_params:
+    to_onehot_y: True                  # 将标签转换为 one-hot
+    softmax: True                      # 对模型输出应用 Softmax
+    include_background: False          # 计算 Loss 时是否包含背景类 (通常不包含)
+
+  # Validation Settings
+  validation_interval: 5                 # 每隔多少 epoch 验证一次
+  metrics: ["MeanDice"]                  # 评估指标 (MeanDice)
+  metric_params:
+    include_background: False          # 计算 Dice 时是否包含背景类
+    reduction: "mean_batch"            # Dice 指标聚合方式
+
+  # Checkpoint Settings
+  checkpoint_dir: "outputs/checkpoints"  # 模型保存路径 (相对于项目根目录)
+  save_best_only: True                   # 只保存验证集上效果最好的模型
+  best_metric: "val_mean_dice"           # 用于判断最佳模型的指标名称 (需与 metrics 对应)
+  monitor_mode: "max"                    # "max" 或 "min" (Dice 越高越好)
+  # resume_checkpoint: "outputs/checkpoints/model_best.pth.tar"
+  
+# 5. Logging Settings
+logging:
+  log_dir: "outputs/logs"                # 日志文件保存路径
+  log_interval: 50                       # 每隔多少 batch 打印一次训练日志
+  use_tensorboard: True                  # 是否使用 TensorBoard
+  tensorboard_dir: "outputs/tb_logs"     # TensorBoard 日志路径
