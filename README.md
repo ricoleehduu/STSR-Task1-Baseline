@@ -1,5 +1,7 @@
 # STSR-Task1-Baseline
 
+[EN](./README.md)  [ZH](./README_zh.md)  
+
 ## Project Overview
 
 **Challenge Website**: [https://songhen15.github.io/STSdevelop.github.io/miccai2025/index.html](https://songhen15.github.io/STSdevelop.github.io/miccai2025/index.html)  
